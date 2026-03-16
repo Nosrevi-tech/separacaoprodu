@@ -49,9 +49,7 @@ function findCol(headers: any[], names: string[]): number {
   return -1;
 }
 
-export async function loadProductsFromXLSX(): Promise<Product[]> {
-  const response = await fetch("/data/RelatorioInventario.xlsx");
-  const buffer = await response.arrayBuffer();
+export function parseProductsFromBuffer(buffer: ArrayBuffer): Product[] {
   const workbook = XLSX.read(buffer, { type: "array" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: "" });
@@ -124,6 +122,11 @@ export async function loadProductsFromXLSX(): Promise<Product[]> {
     });
   }
 
-  console.log(`Loaded ${products.length} products from XLSX`);
   return products;
+}
+
+export async function loadProductsFromXLSX(): Promise<Product[]> {
+  const response = await fetch("/data/RelatorioInventario.xlsx");
+  const buffer = await response.arrayBuffer();
+  return parseProductsFromBuffer(buffer);
 }

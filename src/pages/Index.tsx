@@ -10,8 +10,8 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Package, Calculator, CheckCircle2, Boxes, DollarSign, Search, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
-import { type Product, loadProductsFromXLSX } from "@/lib/loadProducts";
+import { Package, Calculator, CheckCircle2, Boxes, DollarSign, Search, Loader2, ChevronLeft, ChevronRight, Upload } from "lucide-react";
+import { type Product, loadProductsFromXLSX, parseProductsFromBuffer } from "@/lib/loadProducts";
 
 interface Suggestion {
   product: Product;
@@ -74,6 +74,7 @@ const Index = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [page, setPage] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -145,6 +146,40 @@ const Index = () => {
     toast({ title: "Estoque atualizado!", description: "As quantidades foram debitadas com sucesso." });
   }, [suggestions, toast]);
 
+  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith(".xlsx") && !file.name.endsWith(".xls")) {
+      toast({ title: "Formato inválido", description: "Envie um arquivo .xlsx ou .xls", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const buffer = ev.target?.result as ArrayBuffer;
+        const newProducts = parseProductsFromBuffer(buffer);
+        if (newProducts.length === 0) {
+          toast({ title: "Nenhum produto encontrado", description: "Verifique se o arquivo segue o formato esperado.", variant: "destructive" });
+        } else {
+          setProducts(newProducts);
+          setPage(0);
+          setSearchTerm("");
+          toast({ title: "Estoque atualizado!", description: `${newProducts.length} produtos carregados do novo arquivo.` });
+        }
+      } catch (err) {
+        toast({ title: "Erro ao processar arquivo", description: String(err), variant: "destructive" });
+      }
+      setUploading(false);
+    };
+    reader.onerror = () => {
+      toast({ title: "Erro ao ler arquivo", variant: "destructive" });
+      setUploading(false);
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  }, [toast]);
+
   const suggestionTotal = suggestions?.reduce((s, sg) => s + sg.qty * sg.product.unitPrice, 0) || 0;
 
   if (loading) {
@@ -162,15 +197,36 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-card sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary text-primary-foreground">
-            <Boxes className="h-6 w-6" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary text-primary-foreground">
+              <Boxes className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-foreground tracking-tight">Sistema de Separação</h1>
+              <p className="text-sm text-muted-foreground">
+                Separação inteligente de pedidos • {products.length} produtos carregados
+              </p>
+            </div>
           </div>
           <div>
-            <h1 className="text-xl font-bold text-foreground tracking-tight">Sistema de Separação</h1>
-            <p className="text-sm text-muted-foreground">
-              Separação inteligente de pedidos • {products.length} produtos carregados
-            </p>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              id="xlsx-upload"
+              className="hidden"
+              onChange={handleFileUpload}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              disabled={uploading}
+              onClick={() => document.getElementById("xlsx-upload")?.click()}
+            >
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {uploading ? "Processando..." : "Atualizar Estoque"}
+            </Button>
           </div>
         </div>
       </header>
