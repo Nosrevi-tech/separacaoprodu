@@ -65,8 +65,6 @@ export async function loadProductsFromXLSX(): Promise<Product[]> {
     if (!row) continue;
     const cells = row.map((c: any) => String(c ?? ""));
 
-    // Log first rows for debugging
-    console.log(`Row ${i} (${cells.length} cells):`, cells.filter(c => c).join(" | "));
 
     const tryCode = findCol(cells, ["codigo", "cod"]);
     const tryDesc = findCol(cells, ["discriminacao", "descricao", "produto", "nome"]);
