@@ -341,8 +341,8 @@ const Index = () => {
             {suggestions?.map((sg) => (
               <div key={sg.product.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
                 <div className="min-w-0 flex-1 mr-3">
-                  <p className="font-medium text-foreground text-sm truncate">{sg.product.description}</p>
-                  <p className="text-xs text-muted-foreground font-mono">{sg.product.code}</p>
+                  <p className="font-bold text-foreground text-base font-mono">{sg.product.code}</p>
+                  <p className="text-xs text-muted-foreground truncate">{sg.product.description}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="font-bold text-foreground">{sg.qty}x</p>
