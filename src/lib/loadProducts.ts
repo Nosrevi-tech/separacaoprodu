@@ -26,23 +26,24 @@ export interface Product {
   unitPrice: number; // in cents
 }
 
-function normalize(s: string): string {
-  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[_\s]+/g, " ").trim();
+function normalize(s: any): string {
+  if (s == null) return "";
+  return String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[_\s]+/g, " ").trim();
 }
 
-function findCol(headers: string[], names: string[]): number {
-  const nh = headers.map((h) => (h ? normalize(String(h)) : ""));
+function findCol(headers: any[], names: string[]): number {
+  const nh = headers.map((h) => normalize(h));
   const nn = names.map(normalize);
   for (const n of nn) {
     const idx = nh.indexOf(n);
     if (idx !== -1) return idx;
   }
   for (const n of nn) {
-    const idx = nh.findIndex((h) => h.startsWith(n));
+    const idx = nh.findIndex((h) => h && h.startsWith(n));
     if (idx !== -1) return idx;
   }
   for (const n of nn) {
-    const idx = nh.findIndex((h) => h.includes(n));
+    const idx = nh.findIndex((h) => h && h.includes(n));
     if (idx !== -1) return idx;
   }
   return -1;
