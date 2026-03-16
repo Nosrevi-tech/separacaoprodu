@@ -35,9 +35,12 @@ export async function loadProductsFromXLSX(): Promise<Product[]> {
     if (description.includes("RESUMO") || description.includes("TRIBUTAÇÃO")) continue;
 
     const qty = parseFloat(String(qtyRaw));
-    const price = parseFloat(String(priceRaw));
+    if (isNaN(qty) || qty <= 0) continue;
 
-    if (isNaN(qty) || isNaN(price) || qty <= 0 || price <= 0) continue;
+    // Parse price to cents WITHOUT floating-point multiplication
+    const priceStr = String(priceRaw).trim();
+    const priceCents = parseToCents(priceStr);
+    if (priceCents <= 0) continue;
 
     const barcode = String(row[1] ?? "").trim();
 
@@ -47,8 +50,8 @@ export async function loadProductsFromXLSX(): Promise<Product[]> {
       barcode,
       description,
       unit,
-      stock: Math.floor(qty), // integer stock
-      unitPrice: Math.round(price * 100), // cents
+      stock: Math.floor(qty),
+      unitPrice: priceCents,
     });
   }
 
