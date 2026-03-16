@@ -64,10 +64,14 @@ export async function loadProductsFromXLSX(): Promise<Product[]> {
     if (!row) continue;
     const cells = row.map((c: any) => String(c ?? ""));
 
-    const tryCode = findCol(cells, ["codigo", "cod", "id"]);
+    // Log first rows for debugging
+    console.log(`Row ${i} (${cells.length} cells):`, cells.filter(c => c).join(" | "));
+
+    const tryCode = findCol(cells, ["codigo", "cod"]);
     const tryDesc = findCol(cells, ["discriminacao", "descricao", "produto", "nome"]);
-    const tryQty = findCol(cells, ["qtd", "quantidade", "estoque", "qty"]);
-    const tryPrice = findCol(cells, ["unitario", "valor unitario", "preco", "vl unit", "unit"]);
+    const tryQty = findCol(cells, ["qtd", "quantidade", "estoque"]);
+    // "unitario" must come before "unid" to avoid matching "Unid" column
+    const tryPrice = findCol(cells, ["unitario", "valor unitario", "preco", "vl unit"]);
 
     if (tryCode !== -1 && tryDesc !== -1 && tryQty !== -1 && tryPrice !== -1) {
       headerRowIdx = i;
@@ -76,7 +80,7 @@ export async function loadProductsFromXLSX(): Promise<Product[]> {
       qtyCol = tryQty;
       priceCol = tryPrice;
       barcodeCol = findCol(cells, ["barras", "ean", "barcode", "cod barras"]);
-      unitCol = findCol(cells, ["unid", "unidade", "un"]);
+      unitCol = findCol(cells, ["unid", "unidade"]);
       console.log(`Header found at row ${i}:`, { codeCol, descCol, qtyCol, priceCol, barcodeCol, unitCol });
       break;
     }
