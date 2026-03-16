@@ -179,7 +179,6 @@ const Index = () => {
     reader.readAsArrayBuffer(file);
     e.target.value = "";
   }, [toast]);
-  }, [suggestions, toast]);
 
   const suggestionTotal = suggestions?.reduce((s, sg) => s + sg.qty * sg.product.unitPrice, 0) || 0;
 
