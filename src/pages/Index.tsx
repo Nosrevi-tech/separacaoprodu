@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -10,79 +10,96 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Package, Calculator, CheckCircle2, AlertTriangle, Boxes, DollarSign } from "lucide-react";
-
-interface Product {
-  id: number;
-  code: string;
-  description: string;
-  stock: number;
-  unitPrice: number; // stored as cents to avoid floating point
-}
+import { Package, Calculator, CheckCircle2, Boxes, DollarSign, Search, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { type Product, loadProductsFromXLSX } from "@/lib/loadProducts";
 
 interface Suggestion {
   product: Product;
   qty: number;
 }
 
-const initialProducts: Product[] = [
-  { id: 1, code: "COD-001", description: "Parafuso Sextavado M8", stock: 50, unitPrice: 550 },
-  { id: 2, code: "COD-002", description: "Arruela Lisa 3/8", stock: 120, unitPrice: 180 },
-  { id: 3, code: "COD-003", description: "Porca Autotravante M10", stock: 75, unitPrice: 320 },
-  { id: 4, code: "COD-004", description: "Rebite Pop 4mm", stock: 200, unitPrice: 95 },
-  { id: 5, code: "COD-005", description: "Chapa Aço Inox 1mm", stock: 30, unitPrice: 2450 },
-  { id: 6, code: "COD-006", description: "Bucha Nylon S6", stock: 150, unitPrice: 45 },
-  { id: 7, code: "COD-007", description: "Broca HSS 6mm", stock: 40, unitPrice: 1290 },
-];
-
 const formatBRL = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+const PAGE_SIZE = 20;
+
 /**
- * Subset-sum via dynamic programming (values in cents).
- * Returns a combination that sums exactly to `target` or null.
+ * Backtracking search for exact combination.
+ * Products sorted by price desc for fast pruning.
  */
 function findExactCombination(products: Product[], targetCents: number): Suggestion[] | null {
-  // dp[v] = map of productId -> qty used to reach value v, or undefined
-  const dp: (Map<number, number> | undefined)[] = new Array(targetCents + 1);
-  dp[0] = new Map();
+  // Filter products with price <= target and stock > 0
+  const eligible = products
+    .filter((p) => p.unitPrice <= targetCents && p.stock > 0)
+    .sort((a, b) => b.unitPrice - a.unitPrice);
 
-  for (const p of products) {
-    // iterate in reverse per-product to allow multiple units (bounded knapsack)
-    // We process one unit at a time up to stock limit
-    for (let unit = 0; unit < p.stock; unit++) {
-      for (let v = targetCents; v >= p.unitPrice; v--) {
-        const prev = dp[v - p.unitPrice];
-        if (prev !== undefined && dp[v] === undefined) {
-          const next = new Map(prev);
-          next.set(p.id, (next.get(p.id) || 0) + 1);
-          // respect stock
-          if ((next.get(p.id) || 0) <= p.stock) {
-            dp[v] = next;
-          }
-        }
+  const result: Suggestion[] = [];
+  let found = false;
+  const deadline = Date.now() + 3000; // 3s timeout
+
+  function backtrack(idx: number, remaining: number) {
+    if (found || Date.now() > deadline) return;
+    if (remaining === 0) {
+      found = true;
+      return;
+    }
+    if (idx >= eligible.length) return;
+
+    for (let i = idx; i < eligible.length && !found; i++) {
+      const p = eligible[i];
+      if (p.unitPrice > remaining) continue;
+
+      const maxQty = Math.min(p.stock, Math.floor(remaining / p.unitPrice));
+      // Try from max qty down for faster convergence
+      for (let q = maxQty; q >= 1 && !found; q--) {
+        result.push({ product: p, qty: q });
+        backtrack(i + 1, remaining - q * p.unitPrice);
+        if (!found) result.pop();
       }
     }
   }
 
-  const result = dp[targetCents];
-  if (!result) return null;
-
-  const suggestions: Suggestion[] = [];
-  for (const [pid, qty] of result.entries()) {
-    const product = products.find((p) => p.id === pid)!;
-    suggestions.push({ product, qty });
-  }
-  return suggestions;
+  backtrack(0, targetCents);
+  return found ? [...result] : null;
 }
 
 const Index = () => {
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
   const [targetValue, setTargetValue] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [calculating, setCalculating] = useState(false);
+  const [page, setPage] = useState(0);
   const { toast } = useToast();
+
+  useEffect(() => {
+    loadProductsFromXLSX()
+      .then((data) => {
+        setProducts(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to load products:", err);
+        toast({ title: "Erro ao carregar dados", description: String(err), variant: "destructive" });
+        setLoading(false);
+      });
+  }, []);
+
+  const filteredProducts = useMemo(() => {
+    if (!searchTerm) return products;
+    const lower = searchTerm.toLowerCase();
+    return products.filter(
+      (p) =>
+        p.code.toLowerCase().includes(lower) ||
+        p.description.toLowerCase().includes(lower) ||
+        p.barcode.includes(lower)
+    );
+  }, [products, searchTerm]);
+
+  const totalPages = Math.ceil(filteredProducts.length / PAGE_SIZE);
+  const pagedProducts = filteredProducts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const totalStockValue = products.reduce((s, p) => s + p.stock * p.unitPrice, 0);
   const totalItems = products.reduce((s, p) => s + p.stock, 0);
@@ -96,7 +113,6 @@ const Index = () => {
     const targetCents = Math.round(parsed * 100);
 
     setCalculating(true);
-    // Use setTimeout to allow UI to update
     setTimeout(() => {
       const result = findExactCombination(products, targetCents);
       setCalculating(false);
@@ -129,6 +145,17 @@ const Index = () => {
 
   const suggestionTotal = suggestions?.reduce((s, sg) => s + sg.qty * sg.product.unitPrice, 0) || 0;
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-muted-foreground font-medium">Carregando inventário...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -139,7 +166,9 @@ const Index = () => {
           </div>
           <div>
             <h1 className="text-xl font-bold text-foreground tracking-tight">Sistema de Separação</h1>
-            <p className="text-sm text-muted-foreground">Separação inteligente de pedidos e débito de estoque</p>
+            <p className="text-sm text-muted-foreground">
+              Separação inteligente de pedidos • {products.length} produtos carregados
+            </p>
           </div>
         </div>
       </header>
@@ -153,7 +182,7 @@ const Index = () => {
                 <Package className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Produtos Cadastrados</p>
+                <p className="text-sm text-muted-foreground">Produtos</p>
                 <p className="text-2xl font-bold text-foreground">{products.length}</p>
               </div>
             </CardContent>
@@ -165,7 +194,7 @@ const Index = () => {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total de Itens</p>
-                <p className="text-2xl font-bold text-foreground">{totalItems}</p>
+                <p className="text-2xl font-bold text-foreground">{totalItems.toLocaleString("pt-BR")}</p>
               </div>
             </CardContent>
           </Card>
@@ -211,7 +240,14 @@ const Index = () => {
                 onClick={handleCalculate}
                 disabled={calculating}
               >
-                {calculating ? "Calculando..." : "Calcular Sugestão Exata"}
+                {calculating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Calculando...
+                  </>
+                ) : (
+                  "Calcular Sugestão Exata"
+                )}
               </Button>
             </div>
           </CardContent>
@@ -220,7 +256,21 @@ const Index = () => {
         {/* Stock Table */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Estoque Atual</CardTitle>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <CardTitle className="text-lg">Estoque Atual</CardTitle>
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  className="pl-9"
+                  placeholder="Buscar por código, descrição..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setPage(0);
+                  }}
+                />
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -228,29 +278,46 @@ const Index = () => {
                 <TableRow>
                   <TableHead>Código</TableHead>
                   <TableHead>Descrição</TableHead>
-                  <TableHead className="text-right">Qtd. Estoque</TableHead>
+                  <TableHead>Unid.</TableHead>
+                  <TableHead className="text-right">Estoque</TableHead>
                   <TableHead className="text-right">Valor Unit.</TableHead>
                   <TableHead className="text-right">Subtotal</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {products.map((p) => (
+                {pagedProducts.map((p) => (
                   <TableRow key={p.id}>
                     <TableCell>
-                      <Badge variant="outline" className="font-mono">{p.code}</Badge>
+                      <Badge variant="outline" className="font-mono text-xs">{p.code}</Badge>
                     </TableCell>
-                    <TableCell className="font-medium">{p.description}</TableCell>
+                    <TableCell className="font-medium text-sm max-w-[300px] truncate">{p.description}</TableCell>
+                    <TableCell className="text-muted-foreground">{p.unit}</TableCell>
                     <TableCell className="text-right">
-                      <span className={p.stock <= 10 ? "text-destructive font-semibold" : ""}>
+                      <span className={p.stock <= 5 ? "text-destructive font-semibold" : ""}>
                         {p.stock}
                       </span>
                     </TableCell>
-                    <TableCell className="text-right font-mono">{formatBRL(p.unitPrice)}</TableCell>
-                    <TableCell className="text-right font-mono">{formatBRL(p.stock * p.unitPrice)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{formatBRL(p.unitPrice)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{formatBRL(p.stock * p.unitPrice)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+
+            {/* Pagination */}
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <p className="text-sm text-muted-foreground">
+                {filteredProducts.length} produto(s) • Página {page + 1} de {totalPages || 1}
+              </p>
+              <div className="flex gap-1">
+                <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </main>
@@ -268,14 +335,14 @@ const Index = () => {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 my-2">
+          <div className="space-y-3 my-2 max-h-[400px] overflow-y-auto">
             {suggestions?.map((sg) => (
               <div key={sg.product.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
-                <div>
-                  <p className="font-medium text-foreground">{sg.product.description}</p>
-                  <p className="text-sm text-muted-foreground font-mono">{sg.product.code}</p>
+                <div className="min-w-0 flex-1 mr-3">
+                  <p className="font-medium text-foreground text-sm truncate">{sg.product.description}</p>
+                  <p className="text-xs text-muted-foreground font-mono">{sg.product.code}</p>
                 </div>
-                <div className="text-right">
+                <div className="text-right shrink-0">
                   <p className="font-bold text-foreground">{sg.qty}x</p>
                   <p className="text-sm text-muted-foreground font-mono">
                     {formatBRL(sg.qty * sg.product.unitPrice)}
