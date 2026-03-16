@@ -28,29 +28,31 @@ const PAGE_SIZE = 20;
  * Products sorted by price desc for fast pruning.
  */
 function findExactCombination(products: Product[], targetCents: number): Suggestion[] | null {
-  // Filter products with price <= target and stock > 0
+  // Filter products with price <= target and stock > 0, sort descending by price
   const eligible = products
     .filter((p) => p.unitPrice <= targetCents && p.stock > 0)
     .sort((a, b) => b.unitPrice - a.unitPrice);
 
   const result: Suggestion[] = [];
   let found = false;
-  const deadline = Date.now() + 3000; // 3s timeout
+  const deadline = Date.now() + 5000; // 5s timeout
 
   function backtrack(idx: number, remaining: number) {
-    if (found || Date.now() > deadline) return;
+    if (found) return;
     if (remaining === 0) {
       found = true;
       return;
     }
-    if (idx >= eligible.length) return;
+    if (idx >= eligible.length || Date.now() > deadline) return;
+
+    // Prune: if the cheapest item is more than remaining, no solution possible from here
+    if (eligible[eligible.length - 1].unitPrice > remaining) return;
 
     for (let i = idx; i < eligible.length && !found; i++) {
       const p = eligible[i];
       if (p.unitPrice > remaining) continue;
 
       const maxQty = Math.min(p.stock, Math.floor(remaining / p.unitPrice));
-      // Try from max qty down for faster convergence
       for (let q = maxQty; q >= 1 && !found; q--) {
         result.push({ product: p, qty: q });
         backtrack(i + 1, remaining - q * p.unitPrice);
