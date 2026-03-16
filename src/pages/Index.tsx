@@ -146,6 +146,41 @@ const Index = () => {
     toast({ title: "Estoque atualizado!", description: "As quantidades foram debitadas com sucesso." });
   }, [suggestions, toast]);
 
+  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith(".xlsx") && !file.name.endsWith(".xls")) {
+      toast({ title: "Formato inválido", description: "Envie um arquivo .xlsx ou .xls", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const buffer = ev.target?.result as ArrayBuffer;
+        const newProducts = parseProductsFromBuffer(buffer);
+        if (newProducts.length === 0) {
+          toast({ title: "Nenhum produto encontrado", description: "Verifique se o arquivo segue o formato esperado.", variant: "destructive" });
+        } else {
+          setProducts(newProducts);
+          setPage(0);
+          setSearchTerm("");
+          toast({ title: "Estoque atualizado!", description: `${newProducts.length} produtos carregados do novo arquivo.` });
+        }
+      } catch (err) {
+        toast({ title: "Erro ao processar arquivo", description: String(err), variant: "destructive" });
+      }
+      setUploading(false);
+    };
+    reader.onerror = () => {
+      toast({ title: "Erro ao ler arquivo", variant: "destructive" });
+      setUploading(false);
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  }, [toast]);
+  }, [suggestions, toast]);
+
   const suggestionTotal = suggestions?.reduce((s, sg) => s + sg.qty * sg.product.unitPrice, 0) || 0;
 
   if (loading) {
