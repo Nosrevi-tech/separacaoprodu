@@ -74,6 +74,7 @@ const Index = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [page, setPage] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
