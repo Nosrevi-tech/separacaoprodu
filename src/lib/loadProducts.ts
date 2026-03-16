@@ -1,5 +1,21 @@
 import * as XLSX from "xlsx";
 
+/**
+ * Parse a price string to integer cents without floating-point multiplication.
+ * "13.9" → 1390, "5.50" → 550, "420" → 42000, "0.5" → 50
+ */
+function parseToCents(s: string): number {
+  const cleaned = s.replace(",", ".");
+  const parts = cleaned.split(".");
+  const intPart = parseInt(parts[0] || "0", 10);
+  if (isNaN(intPart)) return 0;
+  if (parts.length === 1) return intPart * 100;
+  // Pad or trim decimal to exactly 2 digits
+  const decStr = (parts[1] || "0").slice(0, 2).padEnd(2, "0");
+  const decPart = parseInt(decStr, 10);
+  if (isNaN(decPart)) return intPart * 100;
+  return intPart * 100 + decPart;
+}
 export interface Product {
   id: number;
   code: string;
@@ -35,9 +51,12 @@ export async function loadProductsFromXLSX(): Promise<Product[]> {
     if (description.includes("RESUMO") || description.includes("TRIBUTAÇÃO")) continue;
 
     const qty = parseFloat(String(qtyRaw));
-    const price = parseFloat(String(priceRaw));
+    if (isNaN(qty) || qty <= 0) continue;
 
-    if (isNaN(qty) || isNaN(price) || qty <= 0 || price <= 0) continue;
+    // Parse price to cents WITHOUT floating-point multiplication
+    const priceStr = String(priceRaw).trim();
+    const priceCents = parseToCents(priceStr);
+    if (priceCents <= 0) continue;
 
     const barcode = String(row[1] ?? "").trim();
 
@@ -47,8 +66,8 @@ export async function loadProductsFromXLSX(): Promise<Product[]> {
       barcode,
       description,
       unit,
-      stock: Math.floor(qty), // integer stock
-      unitPrice: Math.round(price * 100), // cents
+      stock: Math.floor(qty),
+      unitPrice: priceCents,
     });
   }
 
