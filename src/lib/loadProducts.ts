@@ -26,6 +26,28 @@ export interface Product {
   unitPrice: number; // in cents
 }
 
+function normalize(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[_\s]+/g, " ").trim();
+}
+
+function findCol(headers: string[], names: string[]): number {
+  const nh = headers.map((h) => (h ? normalize(String(h)) : ""));
+  const nn = names.map(normalize);
+  for (const n of nn) {
+    const idx = nh.indexOf(n);
+    if (idx !== -1) return idx;
+  }
+  for (const n of nn) {
+    const idx = nh.findIndex((h) => h.startsWith(n));
+    if (idx !== -1) return idx;
+  }
+  for (const n of nn) {
+    const idx = nh.findIndex((h) => h.includes(n));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
 export async function loadProductsFromXLSX(): Promise<Product[]> {
   const response = await fetch("/data/RelatorioInventario.xlsx");
   const buffer = await response.arrayBuffer();
@@ -33,32 +55,60 @@ export async function loadProductsFromXLSX(): Promise<Product[]> {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
 
+  // Find header row
+  let headerRowIdx = -1;
+  let codeCol = -1, barcodeCol = -1, descCol = -1, unitCol = -1, qtyCol = -1, priceCol = -1;
+
+  for (let i = 0; i < Math.min(rows.length, 20); i++) {
+    const row = rows[i];
+    if (!row) continue;
+    const cells = row.map((c: any) => String(c ?? ""));
+
+    const tryCode = findCol(cells, ["codigo", "cod", "id"]);
+    const tryDesc = findCol(cells, ["discriminacao", "descricao", "produto", "nome"]);
+    const tryQty = findCol(cells, ["qtd", "quantidade", "estoque", "qty"]);
+    const tryPrice = findCol(cells, ["unitario", "valor unitario", "preco", "vl unit", "unit"]);
+
+    if (tryCode !== -1 && tryDesc !== -1 && tryQty !== -1 && tryPrice !== -1) {
+      headerRowIdx = i;
+      codeCol = tryCode;
+      descCol = tryDesc;
+      qtyCol = tryQty;
+      priceCol = tryPrice;
+      barcodeCol = findCol(cells, ["barras", "ean", "barcode", "cod barras"]);
+      unitCol = findCol(cells, ["unid", "unidade", "un"]);
+      console.log(`Header found at row ${i}:`, { codeCol, descCol, qtyCol, priceCol, barcodeCol, unitCol });
+      break;
+    }
+  }
+
+  if (headerRowIdx === -1) {
+    console.error("Could not find header row in XLSX. First 10 rows:", rows.slice(0, 10));
+    return [];
+  }
+
   const products: Product[] = [];
   let id = 1;
 
-  for (let i = 0; i < rows.length; i++) {
+  for (let i = headerRowIdx + 1; i < rows.length; i++) {
     const row = rows[i];
-    if (!row || row.length < 10) continue;
+    if (!row) continue;
 
-    const code = String(row[0] ?? "").trim();
-    const description = String(row[3] ?? "").trim();
-    const unit = String(row[7] ?? "").trim();
-    const qtyRaw = row[8];
-    const priceRaw = row[9];
+    const code = String(row[codeCol] ?? "").trim();
+    const description = String(row[descCol] ?? "").trim();
 
-    // Skip header rows, summary rows, and empty rows
-    if (!code || !description || code === "Código") continue;
-    if (description.includes("RESUMO") || description.includes("TRIBUTAÇÃO")) continue;
+    if (!code || !description) continue;
+    if (/resumo|tributac|total geral/i.test(code + description)) continue;
 
-    const qty = parseFloat(String(qtyRaw));
-    if (isNaN(qty) || qty <= 0) continue;
+    const qtyVal = parseFloat(String(row[qtyCol] ?? ""));
+    if (isNaN(qtyVal) || qtyVal <= 0) continue;
 
-    // Parse price to cents WITHOUT floating-point multiplication
-    const priceStr = String(priceRaw).trim();
+    const priceStr = String(row[priceCol] ?? "").trim();
     const priceCents = parseToCents(priceStr);
     if (priceCents <= 0) continue;
 
-    const barcode = String(row[1] ?? "").trim();
+    const barcode = barcodeCol !== -1 ? String(row[barcodeCol] ?? "").trim() : "";
+    const unit = unitCol !== -1 ? String(row[unitCol] ?? "").trim() : "UN";
 
     products.push({
       id: id++,
@@ -66,10 +116,11 @@ export async function loadProductsFromXLSX(): Promise<Product[]> {
       barcode,
       description,
       unit,
-      stock: Math.floor(qty),
+      stock: Math.floor(qtyVal),
       unitPrice: priceCents,
     });
   }
 
+  console.log(`Loaded ${products.length} products from XLSX`);
   return products;
 }
