@@ -122,6 +122,11 @@ export function parseProductsFromBuffer(buffer: ArrayBuffer): Product[] {
     });
   }
 
-  console.log(`Loaded ${products.length} products from XLSX`);
   return products;
+}
+
+export async function loadProductsFromXLSX(): Promise<Product[]> {
+  const response = await fetch("/data/RelatorioInventario.xlsx");
+  const buffer = await response.arrayBuffer();
+  return parseProductsFromBuffer(buffer);
 }
