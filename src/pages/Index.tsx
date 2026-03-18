@@ -180,20 +180,20 @@ const Index = () => {
     e.target.value = "";
   }, [toast]);
 
-  const handleEditStock = useCallback((productId: string, newStock: number) => {
+  const handleEditStock = useCallback((productId: number, newStock: number) => {
     if (isNaN(newStock) || newStock < 0) return;
     setProducts((prev) => prev.map((p) => p.id === productId ? { ...p, stock: newStock } : p));
   }, []);
 
-  const handleEditPrice = useCallback((productId: string, newPrice: number) => {
+  const handleEditPrice = useCallback((productId: number, newPrice: number) => {
     if (isNaN(newPrice) || newPrice < 0) return;
     setProducts((prev) => prev.map((p) => p.id === productId ? { ...p, unitPrice: Math.round(newPrice * 100) } : p));
   }, []);
 
-  const [editingCell, setEditingCell] = useState<{ id: string; field: "stock" | "price" } | null>(null);
+  const [editingCell, setEditingCell] = useState<{ id: number; field: "stock" | "price" } | null>(null);
   const [editValue, setEditValue] = useState("");
 
-  const startEdit = (id: string, field: "stock" | "price", currentValue: number) => {
+  const startEdit = (id: number, field: "stock" | "price", currentValue: number) => {
     setEditingCell({ id, field });
     setEditValue(field === "price" ? (currentValue / 100).toFixed(2).replace(".", ",") : String(currentValue));
   };
