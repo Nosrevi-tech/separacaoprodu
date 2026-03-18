@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Package, Calculator, CheckCircle2, Boxes, DollarSign, Search, Loader2, ChevronLeft, ChevronRight, Upload } from "lucide-react";
+import { Package, Calculator, CheckCircle2, Boxes, DollarSign, Search, Loader2, ChevronLeft, ChevronRight, Upload, Pencil } from "lucide-react";
 import { type Product, loadProductsFromXLSX, parseProductsFromBuffer } from "@/lib/loadProducts";
 
 interface Suggestion {
@@ -179,6 +179,35 @@ const Index = () => {
     reader.readAsArrayBuffer(file);
     e.target.value = "";
   }, [toast]);
+
+  const handleEditStock = useCallback((productId: number, newStock: number) => {
+    if (isNaN(newStock) || newStock < 0) return;
+    setProducts((prev) => prev.map((p) => p.id === productId ? { ...p, stock: newStock } : p));
+  }, []);
+
+  const handleEditPrice = useCallback((productId: number, newPrice: number) => {
+    if (isNaN(newPrice) || newPrice < 0) return;
+    setProducts((prev) => prev.map((p) => p.id === productId ? { ...p, unitPrice: Math.round(newPrice * 100) } : p));
+  }, []);
+
+  const [editingCell, setEditingCell] = useState<{ id: number; field: "stock" | "price" } | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const startEdit = (id: number, field: "stock" | "price", currentValue: number) => {
+    setEditingCell({ id, field });
+    setEditValue(field === "price" ? (currentValue / 100).toFixed(2).replace(".", ",") : String(currentValue));
+  };
+
+  const commitEdit = () => {
+    if (!editingCell) return;
+    const val = parseFloat(editValue.replace(",", "."));
+    if (editingCell.field === "stock") {
+      handleEditStock(editingCell.id, Math.floor(val));
+    } else {
+      handleEditPrice(editingCell.id, val);
+    }
+    setEditingCell(null);
+  };
 
   const suggestionTotal = suggestions?.reduce((s, sg) => s + sg.qty * sg.product.unitPrice, 0) || 0;
 
@@ -351,11 +380,44 @@ const Index = () => {
                     <TableCell className="font-medium text-sm max-w-[300px] truncate">{p.description}</TableCell>
                     <TableCell className="text-muted-foreground">{p.unit}</TableCell>
                     <TableCell className="text-right">
-                      <span className={p.stock <= 5 ? "text-destructive font-semibold" : ""}>
-                        {p.stock}
-                      </span>
+                      {editingCell?.id === p.id && editingCell.field === "stock" ? (
+                        <Input
+                          className="w-20 ml-auto text-right h-8 text-sm font-mono"
+                          value={editValue}
+                          autoFocus
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onBlur={commitEdit}
+                          onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditingCell(null); }}
+                        />
+                      ) : (
+                        <span
+                          className={`cursor-pointer hover:underline ${p.stock <= 5 ? "text-destructive font-semibold" : ""}`}
+                          onClick={() => startEdit(p.id, "stock", p.stock)}
+                          title="Clique para editar"
+                        >
+                          {p.stock} <Pencil className="inline h-3 w-3 text-muted-foreground" />
+                        </span>
+                      )}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-sm">{formatBRL(p.unitPrice)}</TableCell>
+                    <TableCell className="text-right">
+                      {editingCell?.id === p.id && editingCell.field === "price" ? (
+                        <Input
+                          className="w-24 ml-auto text-right h-8 text-sm font-mono"
+                          value={editValue}
+                          autoFocus
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onBlur={commitEdit}
+                          onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditingCell(null); }}
+                        />
+                      ) : (
+                        <span
+                          className="cursor-pointer hover:underline font-mono text-sm"
+                          onClick={() => startEdit(p.id, "price", p.unitPrice)}
+                          title="Clique para editar"
+                        >
+                          {formatBRL(p.unitPrice)} <Pencil className="inline h-3 w-3 text-muted-foreground" />
+                        </span>
+                      )}</TableCell>
                     <TableCell className="text-right font-mono text-sm">{formatBRL(p.stock * p.unitPrice)}</TableCell>
                   </TableRow>
                 ))}
