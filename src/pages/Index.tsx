@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Package, Calculator, CheckCircle2, Boxes, DollarSign, Search, Loader2, ChevronLeft, ChevronRight, Upload } from "lucide-react";
+import { Package, Calculator, CheckCircle2, Boxes, DollarSign, Search, Loader2, ChevronLeft, ChevronRight, Upload, Pencil } from "lucide-react";
 import { type Product, loadProductsFromXLSX, parseProductsFromBuffer } from "@/lib/loadProducts";
 
 interface Suggestion {
