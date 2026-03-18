@@ -380,11 +380,44 @@ const Index = () => {
                     <TableCell className="font-medium text-sm max-w-[300px] truncate">{p.description}</TableCell>
                     <TableCell className="text-muted-foreground">{p.unit}</TableCell>
                     <TableCell className="text-right">
-                      <span className={p.stock <= 5 ? "text-destructive font-semibold" : ""}>
-                        {p.stock}
-                      </span>
+                      {editingCell?.id === p.id && editingCell.field === "stock" ? (
+                        <Input
+                          className="w-20 ml-auto text-right h-8 text-sm font-mono"
+                          value={editValue}
+                          autoFocus
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onBlur={commitEdit}
+                          onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditingCell(null); }}
+                        />
+                      ) : (
+                        <span
+                          className={`cursor-pointer hover:underline ${p.stock <= 5 ? "text-destructive font-semibold" : ""}`}
+                          onClick={() => startEdit(p.id, "stock", p.stock)}
+                          title="Clique para editar"
+                        >
+                          {p.stock} <Pencil className="inline h-3 w-3 text-muted-foreground" />
+                        </span>
+                      )}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-sm">{formatBRL(p.unitPrice)}</TableCell>
+                    <TableCell className="text-right">
+                      {editingCell?.id === p.id && editingCell.field === "price" ? (
+                        <Input
+                          className="w-24 ml-auto text-right h-8 text-sm font-mono"
+                          value={editValue}
+                          autoFocus
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onBlur={commitEdit}
+                          onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditingCell(null); }}
+                        />
+                      ) : (
+                        <span
+                          className="cursor-pointer hover:underline font-mono text-sm"
+                          onClick={() => startEdit(p.id, "price", p.unitPrice)}
+                          title="Clique para editar"
+                        >
+                          {formatBRL(p.unitPrice)} <Pencil className="inline h-3 w-3 text-muted-foreground" />
+                        </span>
+                      )}</TableCell>
                     <TableCell className="text-right font-mono text-sm">{formatBRL(p.stock * p.unitPrice)}</TableCell>
                   </TableRow>
                 ))}
