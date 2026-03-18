@@ -180,6 +180,35 @@ const Index = () => {
     e.target.value = "";
   }, [toast]);
 
+  const handleEditStock = useCallback((productId: string, newStock: number) => {
+    if (isNaN(newStock) || newStock < 0) return;
+    setProducts((prev) => prev.map((p) => p.id === productId ? { ...p, stock: newStock } : p));
+  }, []);
+
+  const handleEditPrice = useCallback((productId: string, newPrice: number) => {
+    if (isNaN(newPrice) || newPrice < 0) return;
+    setProducts((prev) => prev.map((p) => p.id === productId ? { ...p, unitPrice: Math.round(newPrice * 100) } : p));
+  }, []);
+
+  const [editingCell, setEditingCell] = useState<{ id: string; field: "stock" | "price" } | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const startEdit = (id: string, field: "stock" | "price", currentValue: number) => {
+    setEditingCell({ id, field });
+    setEditValue(field === "price" ? (currentValue / 100).toFixed(2).replace(".", ",") : String(currentValue));
+  };
+
+  const commitEdit = () => {
+    if (!editingCell) return;
+    const val = parseFloat(editValue.replace(",", "."));
+    if (editingCell.field === "stock") {
+      handleEditStock(editingCell.id, Math.floor(val));
+    } else {
+      handleEditPrice(editingCell.id, val);
+    }
+    setEditingCell(null);
+  };
+
   const suggestionTotal = suggestions?.reduce((s, sg) => s + sg.qty * sg.product.unitPrice, 0) || 0;
 
   if (loading) {
