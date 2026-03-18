@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -10,12 +10,19 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Package, Calculator, CheckCircle2, Boxes, DollarSign, Search, Loader2, ChevronLeft, ChevronRight, Upload, Pencil } from "lucide-react";
+import { Package, Calculator, CheckCircle2, Boxes, DollarSign, Search, Loader2, ChevronLeft, ChevronRight, Upload, Pencil, RotateCcw, Minus } from "lucide-react";
 import { type Product, loadProductsFromXLSX, parseProductsFromBuffer } from "@/lib/loadProducts";
 
 interface Suggestion {
   product: Product;
   qty: number;
+}
+
+interface DebitEntry {
+  code: string;
+  description: string;
+  qty: number;
+  unitPriceCents: number;
 }
 
 const formatBRL = (cents: number) =>
@@ -28,30 +35,23 @@ const PAGE_SIZE = 20;
  * Products sorted by price desc for fast pruning.
  */
 function findExactCombination(products: Product[], targetCents: number): Suggestion[] | null {
-  // Filter products with price <= target and stock > 0, sort descending by price
   const eligible = products
     .filter((p) => p.unitPrice <= targetCents && p.stock > 0)
     .sort((a, b) => b.unitPrice - a.unitPrice);
 
   const result: Suggestion[] = [];
   let found = false;
-  const deadline = Date.now() + 5000; // 5s timeout
+  const deadline = Date.now() + 5000;
 
   function backtrack(idx: number, remaining: number) {
     if (found) return;
-    if (remaining === 0) {
-      found = true;
-      return;
-    }
+    if (remaining === 0) { found = true; return; }
     if (idx >= eligible.length || Date.now() > deadline) return;
-
-    // Prune: if the cheapest item is more than remaining, no solution possible from here
     if (eligible[eligible.length - 1].unitPrice > remaining) return;
 
     for (let i = idx; i < eligible.length && !found; i++) {
       const p = eligible[i];
       if (p.unitPrice > remaining) continue;
-
       const maxQty = Math.min(p.stock, Math.floor(remaining / p.unitPrice));
       for (let q = maxQty; q >= 1 && !found; q--) {
         result.push({ product: p, qty: q });
@@ -75,12 +75,18 @@ const Index = () => {
   const [calculating, setCalculating] = useState(false);
   const [page, setPage] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [editingCell, setEditingCell] = useState<{ id: number; field: "stock" | "price" } | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [debitHistory, setDebitHistory] = useState<DebitEntry[]>([]);
   const { toast } = useToast();
+  // Keep a ref to the original products so we can reset
+  const originalProducts = useRef<Product[]>([]);
 
   useEffect(() => {
     loadProductsFromXLSX()
       .then((data) => {
         setProducts(data);
+        originalProducts.current = data.map((p) => ({ ...p }));
         setLoading(false);
       })
       .catch((err) => {
@@ -132,14 +138,39 @@ const Index = () => {
     }, 50);
   }, [targetValue, products, toast]);
 
+  // Fixed: use functional updater and lookup by id to always use fresh state
   const handleConfirm = useCallback(() => {
-    if (!suggestions) return;
+    if (!suggestions || suggestions.length === 0) return;
+
+    // Build a debit map from suggestions: id -> { qty, code, description, unitPrice }
+    const debitMap = new Map<number, { qty: number; code: string; description: string; unitPriceCents: number }>();
+    for (const sg of suggestions) {
+      debitMap.set(sg.product.id, {
+        qty: sg.qty,
+        code: sg.product.code,
+        description: sg.product.description,
+        unitPriceCents: sg.product.unitPrice,
+      });
+    }
+
     setProducts((prev) =>
       prev.map((p) => {
-        const s = suggestions.find((sg) => sg.product.id === p.id);
-        return s ? { ...p, stock: p.stock - s.qty } : p;
+        const entry = debitMap.get(p.id);
+        if (!entry) return p;
+        const newStock = Math.max(0, p.stock - entry.qty);
+        return { ...p, stock: newStock };
       })
     );
+
+    // Add to debit history
+    const newEntries: DebitEntry[] = suggestions.map((sg) => ({
+      code: sg.product.code,
+      description: sg.product.description,
+      qty: sg.qty,
+      unitPriceCents: sg.product.unitPrice,
+    }));
+    setDebitHistory((prev) => [...prev, ...newEntries]);
+
     setDialogOpen(false);
     setSuggestions(null);
     setTargetValue("");
@@ -163,8 +194,10 @@ const Index = () => {
           toast({ title: "Nenhum produto encontrado", description: "Verifique se o arquivo segue o formato esperado.", variant: "destructive" });
         } else {
           setProducts(newProducts);
+          originalProducts.current = newProducts.map((p) => ({ ...p }));
           setPage(0);
           setSearchTerm("");
+          setDebitHistory([]);
           toast({ title: "Estoque atualizado!", description: `${newProducts.length} produtos carregados do novo arquivo.` });
         }
       } catch (err) {
@@ -190,9 +223,6 @@ const Index = () => {
     setProducts((prev) => prev.map((p) => p.id === productId ? { ...p, unitPrice: Math.round(newPrice * 100) } : p));
   }, []);
 
-  const [editingCell, setEditingCell] = useState<{ id: number; field: "stock" | "price" } | null>(null);
-  const [editValue, setEditValue] = useState("");
-
   const startEdit = (id: number, field: "stock" | "price", currentValue: number) => {
     setEditingCell({ id, field });
     setEditValue(field === "price" ? (currentValue / 100).toFixed(2).replace(".", ",") : String(currentValue));
@@ -209,6 +239,13 @@ const Index = () => {
     setEditingCell(null);
   };
 
+  const handleResetStock = () => {
+    setProducts(originalProducts.current.map((p) => ({ ...p })));
+    setDebitHistory([]);
+    toast({ title: "Estoque resetado!", description: "Os valores foram restaurados ao estado original." });
+  };
+
+  const debitTotalCents = debitHistory.reduce((s, e) => s + e.qty * e.unitPriceCents, 0);
   const suggestionTotal = suggestions?.reduce((s, sg) => s + sg.qty * sg.product.unitPrice, 0) || 0;
 
   if (loading) {
@@ -238,7 +275,17 @@ const Index = () => {
               </p>
             </div>
           </div>
-          <div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={handleResetStock}
+              disabled={debitHistory.length === 0}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Resetar Estoque
+            </Button>
             <input
               type="file"
               accept=".xlsx,.xls"
@@ -262,7 +309,7 @@ const Index = () => {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6 flex items-center gap-4">
               <div className="p-3 rounded-xl bg-primary/10">
@@ -296,7 +343,47 @@ const Index = () => {
               </div>
             </CardContent>
           </Card>
+          {/* Debit Calculator Card */}
+          <Card className={debitHistory.length > 0 ? "border-2 border-destructive/30" : ""}>
+            <CardContent className="pt-6 flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-destructive/10">
+                <Minus className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Debitado</p>
+                <p className="text-2xl font-bold text-destructive">{formatBRL(debitTotalCents)}</p>
+                <p className="text-xs text-muted-foreground">{debitHistory.length} item(ns)</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
+
+        {/* Debit History detail (collapsible) */}
+        {debitHistory.length > 0 && (
+          <Card className="border border-destructive/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Minus className="h-4 w-4 text-destructive" />
+                Histórico de Débitos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {debitHistory.map((entry, i) => (
+                  <div key={i} className="flex justify-between text-sm py-1 border-b border-border/50 last:border-0">
+                    <span className="font-mono text-foreground">{entry.code}</span>
+                    <span className="text-muted-foreground truncate max-w-[200px] mx-2">{entry.description}</span>
+                    <span className="shrink-0 font-medium text-foreground">{entry.qty}x {formatBRL(entry.unitPriceCents)} = <span className="text-destructive">{formatBRL(entry.qty * entry.unitPriceCents)}</span></span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between items-center pt-2 mt-2 border-t font-bold text-foreground">
+                <span>Total Debitado</span>
+                <span className="font-mono text-destructive">{formatBRL(debitTotalCents)}</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Target Value Input */}
         <Card className="border-2 border-primary/20">
@@ -417,7 +504,8 @@ const Index = () => {
                         >
                           {formatBRL(p.unitPrice)} <Pencil className="inline h-3 w-3 text-muted-foreground" />
                         </span>
-                      )}</TableCell>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right font-mono text-sm">{formatBRL(p.stock * p.unitPrice)}</TableCell>
                   </TableRow>
                 ))}
