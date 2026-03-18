@@ -122,16 +122,29 @@ const Index = () => {
     const targetCents = Math.round(parsed * 100);
 
     setCalculating(true);
+    // Clear previous suggestions before new calculation
+    setSuggestions(null);
+
     setTimeout(() => {
-      const result = findExactCombination(products, targetCents);
-      setCalculating(false);
-      if (result) {
-        setSuggestions(result);
-        setDialogOpen(true);
-      } else {
+      try {
+        const result = findExactCombination(products, targetCents);
+        setCalculating(false);
+        if (result) {
+          setSuggestions(result);
+          setDialogOpen(true);
+        } else {
+          toast({
+            title: "Combinação não encontrada",
+            description: "Não foi possível encontrar uma combinação exata para este valor.",
+            variant: "destructive",
+          });
+        }
+      } catch (err) {
+        console.error("Calculation error:", err);
+        setCalculating(false);
         toast({
-          title: "Combinação não encontrada",
-          description: "Não foi possível encontrar uma combinação exata para este valor.",
+          title: "Erro no cálculo",
+          description: "Ocorreu um erro durante o cálculo. Tente novamente.",
           variant: "destructive",
         });
       }
