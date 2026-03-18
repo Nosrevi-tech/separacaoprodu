@@ -252,10 +252,9 @@ const Index = () => {
     setEditingCell(null);
   };
 
-  const handleResetStock = () => {
-    setProducts(originalProducts.current.map((p) => ({ ...p })));
+  const handleResetDebitSum = () => {
     setDebitHistory([]);
-    toast({ title: "Estoque resetado!", description: "Os valores foram restaurados ao estado original." });
+    toast({ title: "Soma zerada!", description: "O total de débitos do dia foi reiniciado." });
   };
 
   const debitTotalCents = debitHistory.reduce((s, e) => s + e.qty * e.unitPriceCents, 0);
