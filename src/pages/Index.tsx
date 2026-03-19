@@ -132,15 +132,26 @@ const Index = () => {
   }, [debitHistory]);
 
   const filteredProducts = useMemo(() => {
-    if (!searchTerm) return products;
-    const lower = searchTerm.toLowerCase();
-    return products.filter(
-      (p) =>
-        p.code.toLowerCase().includes(lower) ||
-        p.description.toLowerCase().includes(lower) ||
-        p.barcode.includes(lower)
-    );
-  }, [products, searchTerm]);
+    let list = products;
+    if (searchTerm) {
+      const lower = searchTerm.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.code.toLowerCase().includes(lower) ||
+          p.description.toLowerCase().includes(lower) ||
+          p.barcode.includes(lower)
+      );
+    }
+    const minCents = Math.round(parseFloat(minPrice.replace(",", ".")) * 100);
+    const maxCents = Math.round(parseFloat(maxPrice.replace(",", ".")) * 100);
+    if (!isNaN(minCents) && minCents > 0) {
+      list = list.filter((p) => p.unitPrice >= minCents);
+    }
+    if (!isNaN(maxCents) && maxCents > 0) {
+      list = list.filter((p) => p.unitPrice <= maxCents);
+    }
+    return list;
+  }, [products, searchTerm, minPrice, maxPrice]);
 
   const totalPages = Math.ceil(filteredProducts.length / PAGE_SIZE);
   const pagedProducts = filteredProducts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
