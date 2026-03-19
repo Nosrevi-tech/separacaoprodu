@@ -141,16 +141,14 @@ const Index = () => {
           p.barcode.includes(lower)
       );
     }
-    const minCents = Math.round(parseFloat(minPrice.replace(",", ".")) * 100);
-    const maxCents = Math.round(parseFloat(maxPrice.replace(",", ".")) * 100);
-    if (!isNaN(minCents) && minCents > 0) {
-      list = list.filter((p) => p.unitPrice >= minCents);
-    }
-    if (!isNaN(maxCents) && maxCents > 0) {
-      list = list.filter((p) => p.unitPrice <= maxCents);
+    if (priceSearch) {
+      const searchCents = Math.round(parseFloat(priceSearch.replace(",", ".")) * 100);
+      if (!isNaN(searchCents) && searchCents > 0) {
+        list = list.filter((p) => p.unitPrice === searchCents);
+      }
     }
     return list;
-  }, [products, searchTerm, minPrice, maxPrice]);
+  }, [products, searchTerm, priceSearch]);
 
   const totalPages = Math.ceil(filteredProducts.length / PAGE_SIZE);
   const pagedProducts = filteredProducts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
