@@ -65,11 +65,16 @@ function findExactCombination(products: Product[], targetCents: number): Suggest
   return found ? [...result] : null;
 }
 
+const STORAGE_KEY_PRODUCTS = "sep_products";
+const STORAGE_KEY_DEBIT = "sep_debitHistory";
+
 const Index = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [targetValue, setTargetValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [calculating, setCalculating] = useState(false);
@@ -77,16 +82,34 @@ const Index = () => {
   const [uploading, setUploading] = useState(false);
   const [editingCell, setEditingCell] = useState<{ id: number; field: "stock" | "price" } | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [debitHistory, setDebitHistory] = useState<DebitEntry[]>([]);
+  const [debitHistory, setDebitHistory] = useState<DebitEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_DEBIT);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const { toast } = useToast();
-  // Keep a ref to the original products so we can reset
   const originalProducts = useRef<Product[]>([]);
 
+  // Load products: prefer localStorage, fallback to XLSX
   useEffect(() => {
+    const savedProducts = localStorage.getItem(STORAGE_KEY_PRODUCTS);
+    if (savedProducts) {
+      try {
+        const parsed = JSON.parse(savedProducts) as Product[];
+        if (parsed.length > 0) {
+          setProducts(parsed);
+          originalProducts.current = parsed.map((p) => ({ ...p }));
+          setLoading(false);
+          return;
+        }
+      } catch { /* fall through */ }
+    }
     loadProductsFromXLSX()
       .then((data) => {
         setProducts(data);
         originalProducts.current = data.map((p) => ({ ...p }));
+        localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(data));
         setLoading(false);
       })
       .catch((err) => {
@@ -95,6 +118,18 @@ const Index = () => {
         setLoading(false);
       });
   }, []);
+
+  // Persist products to localStorage on change
+  useEffect(() => {
+    if (products.length > 0) {
+      localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(products));
+    }
+  }, [products]);
+
+  // Persist debitHistory to localStorage on change
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_DEBIT, JSON.stringify(debitHistory));
+  }, [debitHistory]);
 
   const filteredProducts = useMemo(() => {
     if (!searchTerm) return products;
