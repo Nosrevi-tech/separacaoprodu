@@ -160,6 +160,7 @@ const Index = () => {
   const totalItems = products.reduce((s, p) => s + p.stock, 0);
 
   const handleCalculate = useCallback(() => {
+    if (calculating) return; // prevent double-click
     const parsed = parseFloat(targetValue.replace(",", "."));
     if (isNaN(parsed) || parsed <= 0) {
       toast({ title: "Valor inválido", description: "Informe um valor alvo positivo.", variant: "destructive" });
@@ -167,16 +168,20 @@ const Index = () => {
     }
     const targetCents = Math.round(parsed * 100);
 
-    setCalculating(true);
-    // Clear previous suggestions before new calculation
+    // Close any open dialog and clear old suggestions first
+    setDialogOpen(false);
     setSuggestions(null);
+    setCalculating(true);
+
+    // Use a snapshot of products so state changes during calc don't cause issues
+    const snapshot = [...products];
 
     setTimeout(() => {
       try {
-        const result = findExactCombination(products, targetCents);
+        const result = findExactCombination(snapshot, targetCents);
+        setSuggestions(result);
         setCalculating(false);
         if (result) {
-          setSuggestions(result);
           setDialogOpen(true);
         } else {
           toast({
@@ -195,7 +200,7 @@ const Index = () => {
         });
       }
     }, 50);
-  }, [targetValue, products, toast]);
+  }, [targetValue, products, toast, calculating]);
 
   // Fixed: use functional updater and lookup by id to always use fresh state
   const handleConfirm = useCallback(() => {
