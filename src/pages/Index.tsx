@@ -73,8 +73,7 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
   const [targetValue, setTargetValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [minPrice, setMinPrice] = useState("");
-  const [maxPrice, setMaxPrice] = useState("");
+  const [priceSearch, setPriceSearch] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [calculating, setCalculating] = useState(false);
