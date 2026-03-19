@@ -507,22 +507,15 @@ const Index = () => {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-muted-foreground">Filtrar por valor:</span>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
                 <Input
-                  className="w-28 h-8 text-sm font-mono"
-                  placeholder="Mín R$"
-                  value={minPrice}
-                  onChange={(e) => { setMinPrice(e.target.value); setPage(0); }}
+                  className="w-32 h-8 text-sm font-mono"
+                  placeholder="Buscar por valor"
+                  value={priceSearch}
+                  onChange={(e) => { setPriceSearch(e.target.value); setPage(0); }}
                 />
-                <span className="text-muted-foreground">—</span>
-                <Input
-                  className="w-28 h-8 text-sm font-mono"
-                  placeholder="Máx R$"
-                  value={maxPrice}
-                  onChange={(e) => { setMaxPrice(e.target.value); setPage(0); }}
-                />
-                {(minPrice || maxPrice) && (
-                  <Button variant="ghost" size="sm" onClick={() => { setMinPrice(""); setMaxPrice(""); }}>
+                {priceSearch && (
+                  <Button variant="ghost" size="sm" onClick={() => setPriceSearch("")}>
                     Limpar
                   </Button>
                 )}
