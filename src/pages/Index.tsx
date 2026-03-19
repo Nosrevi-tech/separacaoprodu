@@ -73,8 +73,7 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
   const [targetValue, setTargetValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [minPrice, setMinPrice] = useState("");
-  const [maxPrice, setMaxPrice] = useState("");
+  const [priceSearch, setPriceSearch] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [calculating, setCalculating] = useState(false);
@@ -142,16 +141,14 @@ const Index = () => {
           p.barcode.includes(lower)
       );
     }
-    const minCents = Math.round(parseFloat(minPrice.replace(",", ".")) * 100);
-    const maxCents = Math.round(parseFloat(maxPrice.replace(",", ".")) * 100);
-    if (!isNaN(minCents) && minCents > 0) {
-      list = list.filter((p) => p.unitPrice >= minCents);
-    }
-    if (!isNaN(maxCents) && maxCents > 0) {
-      list = list.filter((p) => p.unitPrice <= maxCents);
+    if (priceSearch) {
+      const searchCents = Math.round(parseFloat(priceSearch.replace(",", ".")) * 100);
+      if (!isNaN(searchCents) && searchCents > 0) {
+        list = list.filter((p) => p.unitPrice === searchCents);
+      }
     }
     return list;
-  }, [products, searchTerm, minPrice, maxPrice]);
+  }, [products, searchTerm, priceSearch]);
 
   const totalPages = Math.ceil(filteredProducts.length / PAGE_SIZE);
   const pagedProducts = filteredProducts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -510,22 +507,15 @@ const Index = () => {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-muted-foreground">Filtrar por valor:</span>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
                 <Input
-                  className="w-28 h-8 text-sm font-mono"
-                  placeholder="Mín R$"
-                  value={minPrice}
-                  onChange={(e) => { setMinPrice(e.target.value); setPage(0); }}
+                  className="w-32 h-8 text-sm font-mono"
+                  placeholder="Buscar por valor"
+                  value={priceSearch}
+                  onChange={(e) => { setPriceSearch(e.target.value); setPage(0); }}
                 />
-                <span className="text-muted-foreground">—</span>
-                <Input
-                  className="w-28 h-8 text-sm font-mono"
-                  placeholder="Máx R$"
-                  value={maxPrice}
-                  onChange={(e) => { setMaxPrice(e.target.value); setPage(0); }}
-                />
-                {(minPrice || maxPrice) && (
-                  <Button variant="ghost" size="sm" onClick={() => { setMinPrice(""); setMaxPrice(""); }}>
+                {priceSearch && (
+                  <Button variant="ghost" size="sm" onClick={() => setPriceSearch("")}>
                     Limpar
                   </Button>
                 )}
