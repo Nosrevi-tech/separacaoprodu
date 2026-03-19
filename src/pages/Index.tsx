@@ -488,19 +488,42 @@ const Index = () => {
         {/* Stock Table */}
         <Card>
           <CardHeader>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <CardTitle className="text-lg">Estoque Atual</CardTitle>
-              <div className="relative w-full sm:w-72">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <CardTitle className="text-lg">Estoque Atual</CardTitle>
+                <div className="relative w-full sm:w-72">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Buscar por código, descrição..."
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setPage(0);
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-muted-foreground">Filtrar por valor:</span>
                 <Input
-                  className="pl-9"
-                  placeholder="Buscar por código, descrição..."
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setPage(0);
-                  }}
+                  className="w-28 h-8 text-sm font-mono"
+                  placeholder="Mín R$"
+                  value={minPrice}
+                  onChange={(e) => { setMinPrice(e.target.value); setPage(0); }}
                 />
+                <span className="text-muted-foreground">—</span>
+                <Input
+                  className="w-28 h-8 text-sm font-mono"
+                  placeholder="Máx R$"
+                  value={maxPrice}
+                  onChange={(e) => { setMaxPrice(e.target.value); setPage(0); }}
+                />
+                {(minPrice || maxPrice) && (
+                  <Button variant="ghost" size="sm" onClick={() => { setMinPrice(""); setMaxPrice(""); }}>
+                    Limpar
+                  </Button>
+                )}
               </div>
             </div>
           </CardHeader>
