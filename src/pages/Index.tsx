@@ -65,11 +65,16 @@ function findExactCombination(products: Product[], targetCents: number): Suggest
   return found ? [...result] : null;
 }
 
+const STORAGE_KEY_PRODUCTS = "sep_products";
+const STORAGE_KEY_DEBIT = "sep_debitHistory";
+
 const Index = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [targetValue, setTargetValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [calculating, setCalculating] = useState(false);
@@ -77,16 +82,34 @@ const Index = () => {
   const [uploading, setUploading] = useState(false);
   const [editingCell, setEditingCell] = useState<{ id: number; field: "stock" | "price" } | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [debitHistory, setDebitHistory] = useState<DebitEntry[]>([]);
+  const [debitHistory, setDebitHistory] = useState<DebitEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_DEBIT);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const { toast } = useToast();
-  // Keep a ref to the original products so we can reset
   const originalProducts = useRef<Product[]>([]);
 
+  // Load products: prefer localStorage, fallback to XLSX
   useEffect(() => {
+    const savedProducts = localStorage.getItem(STORAGE_KEY_PRODUCTS);
+    if (savedProducts) {
+      try {
+        const parsed = JSON.parse(savedProducts) as Product[];
+        if (parsed.length > 0) {
+          setProducts(parsed);
+          originalProducts.current = parsed.map((p) => ({ ...p }));
+          setLoading(false);
+          return;
+        }
+      } catch { /* fall through */ }
+    }
     loadProductsFromXLSX()
       .then((data) => {
         setProducts(data);
         originalProducts.current = data.map((p) => ({ ...p }));
+        localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(data));
         setLoading(false);
       })
       .catch((err) => {
@@ -96,16 +119,39 @@ const Index = () => {
       });
   }, []);
 
+  // Persist products to localStorage on change
+  useEffect(() => {
+    if (products.length > 0) {
+      localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(products));
+    }
+  }, [products]);
+
+  // Persist debitHistory to localStorage on change
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_DEBIT, JSON.stringify(debitHistory));
+  }, [debitHistory]);
+
   const filteredProducts = useMemo(() => {
-    if (!searchTerm) return products;
-    const lower = searchTerm.toLowerCase();
-    return products.filter(
-      (p) =>
-        p.code.toLowerCase().includes(lower) ||
-        p.description.toLowerCase().includes(lower) ||
-        p.barcode.includes(lower)
-    );
-  }, [products, searchTerm]);
+    let list = products;
+    if (searchTerm) {
+      const lower = searchTerm.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.code.toLowerCase().includes(lower) ||
+          p.description.toLowerCase().includes(lower) ||
+          p.barcode.includes(lower)
+      );
+    }
+    const minCents = Math.round(parseFloat(minPrice.replace(",", ".")) * 100);
+    const maxCents = Math.round(parseFloat(maxPrice.replace(",", ".")) * 100);
+    if (!isNaN(minCents) && minCents > 0) {
+      list = list.filter((p) => p.unitPrice >= minCents);
+    }
+    if (!isNaN(maxCents) && maxCents > 0) {
+      list = list.filter((p) => p.unitPrice <= maxCents);
+    }
+    return list;
+  }, [products, searchTerm, minPrice, maxPrice]);
 
   const totalPages = Math.ceil(filteredProducts.length / PAGE_SIZE);
   const pagedProducts = filteredProducts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -114,6 +160,7 @@ const Index = () => {
   const totalItems = products.reduce((s, p) => s + p.stock, 0);
 
   const handleCalculate = useCallback(() => {
+    if (calculating) return; // prevent double-click
     const parsed = parseFloat(targetValue.replace(",", "."));
     if (isNaN(parsed) || parsed <= 0) {
       toast({ title: "Valor inválido", description: "Informe um valor alvo positivo.", variant: "destructive" });
@@ -121,16 +168,20 @@ const Index = () => {
     }
     const targetCents = Math.round(parsed * 100);
 
-    setCalculating(true);
-    // Clear previous suggestions before new calculation
+    // Close any open dialog and clear old suggestions first
+    setDialogOpen(false);
     setSuggestions(null);
+    setCalculating(true);
+
+    // Use a snapshot of products so state changes during calc don't cause issues
+    const snapshot = [...products];
 
     setTimeout(() => {
       try {
-        const result = findExactCombination(products, targetCents);
+        const result = findExactCombination(snapshot, targetCents);
+        setSuggestions(result);
         setCalculating(false);
         if (result) {
-          setSuggestions(result);
           setDialogOpen(true);
         } else {
           toast({
@@ -149,7 +200,7 @@ const Index = () => {
         });
       }
     }, 50);
-  }, [targetValue, products, toast]);
+  }, [targetValue, products, toast, calculating]);
 
   // Fixed: use functional updater and lookup by id to always use fresh state
   const handleConfirm = useCallback(() => {
@@ -442,19 +493,42 @@ const Index = () => {
         {/* Stock Table */}
         <Card>
           <CardHeader>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <CardTitle className="text-lg">Estoque Atual</CardTitle>
-              <div className="relative w-full sm:w-72">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <CardTitle className="text-lg">Estoque Atual</CardTitle>
+                <div className="relative w-full sm:w-72">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Buscar por código, descrição..."
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setPage(0);
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-muted-foreground">Filtrar por valor:</span>
                 <Input
-                  className="pl-9"
-                  placeholder="Buscar por código, descrição..."
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setPage(0);
-                  }}
+                  className="w-28 h-8 text-sm font-mono"
+                  placeholder="Mín R$"
+                  value={minPrice}
+                  onChange={(e) => { setMinPrice(e.target.value); setPage(0); }}
                 />
+                <span className="text-muted-foreground">—</span>
+                <Input
+                  className="w-28 h-8 text-sm font-mono"
+                  placeholder="Máx R$"
+                  value={maxPrice}
+                  onChange={(e) => { setMaxPrice(e.target.value); setPage(0); }}
+                />
+                {(minPrice || maxPrice) && (
+                  <Button variant="ghost" size="sm" onClick={() => { setMinPrice(""); setMaxPrice(""); }}>
+                    Limpar
+                  </Button>
+                )}
               </div>
             </div>
           </CardHeader>
