@@ -157,7 +157,7 @@ const Index = () => {
   const totalItems = products.reduce((s, p) => s + p.stock, 0);
 
   const handleCalculate = useCallback(() => {
-    if (calculating) return; // prevent double-click
+    if (calculating) return;
     const parsed = parseFloat(targetValue.replace(",", "."));
     if (isNaN(parsed) || parsed <= 0) {
       toast({ title: "Valor inválido", description: "Informe um valor alvo positivo.", variant: "destructive" });
@@ -165,22 +165,26 @@ const Index = () => {
     }
     const targetCents = Math.round(parsed * 100);
 
-    // Close any open dialog and clear old suggestions first
-    setDialogOpen(false);
-    setSuggestions(null);
-    setCalculating(true);
+    // Close dialog first if open, wait for DOM to settle
+    if (dialogOpen) {
+      setDialogOpen(false);
+      setSuggestions(null);
+    }
 
-    // Use a snapshot of products so state changes during calc don't cause issues
+    setCalculating(true);
     const snapshot = [...products];
 
+    // Longer timeout to let dialog unmount cleanly before opening a new one
     setTimeout(() => {
       try {
         const result = findExactCombination(snapshot, targetCents);
-        setSuggestions(result);
         setCalculating(false);
         if (result) {
-          setDialogOpen(true);
+          setSuggestions(result);
+          // Extra tick to ensure old dialog is fully unmounted
+          requestAnimationFrame(() => setDialogOpen(true));
         } else {
+          setSuggestions(null);
           toast({
             title: "Combinação não encontrada",
             description: "Não foi possível encontrar uma combinação exata para este valor.",
@@ -196,8 +200,8 @@ const Index = () => {
           variant: "destructive",
         });
       }
-    }, 50);
-  }, [targetValue, products, toast, calculating]);
+    }, 100);
+  }, [targetValue, products, toast, calculating, dialogOpen]);
 
   // Fixed: use functional updater and lookup by id to always use fresh state
   const handleConfirm = useCallback(() => {
