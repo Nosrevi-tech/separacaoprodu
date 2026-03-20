@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -11,18 +11,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Package, Calculator, CheckCircle2, Boxes, DollarSign, Search, Loader2, ChevronLeft, ChevronRight, Upload, Pencil, RotateCcw, Minus } from "lucide-react";
-import { type Product, loadProductsFromXLSX, parseProductsFromBuffer } from "@/lib/loadProducts";
+import { type Product } from "@/lib/loadProducts";
+import { useProducts } from "@/hooks/useProducts";
 
 interface Suggestion {
   product: Product;
   qty: number;
-}
-
-interface DebitEntry {
-  code: string;
-  description: string;
-  qty: number;
-  unitPriceCents: number;
 }
 
 const formatBRL = (cents: number) =>
@@ -30,10 +24,6 @@ const formatBRL = (cents: number) =>
 
 const PAGE_SIZE = 20;
 
-/**
- * Backtracking search for exact combination.
- * Products sorted by price desc for fast pruning.
- */
 function findExactCombination(products: Product[], targetCents: number): Suggestion[] | null {
   const eligible = products
     .filter((p) => p.unitPrice <= targetCents && p.stock > 0)
@@ -65,12 +55,18 @@ function findExactCombination(products: Product[], targetCents: number): Suggest
   return found ? [...result] : null;
 }
 
-const STORAGE_KEY_PRODUCTS = "sep_products";
-const STORAGE_KEY_DEBIT = "sep_debitHistory";
-
 const Index = () => {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    products,
+    debitHistory,
+    loading,
+    updateProductStock,
+    updateProductPrice,
+    debitProducts,
+    resetDebitHistory,
+    uploadFile,
+  } = useProducts();
+
   const [targetValue, setTargetValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [priceSearch, setPriceSearch] = useState("");
@@ -81,54 +77,7 @@ const Index = () => {
   const [uploading, setUploading] = useState(false);
   const [editingCell, setEditingCell] = useState<{ id: number; field: "stock" | "price" } | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [debitHistory, setDebitHistory] = useState<DebitEntry[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_DEBIT);
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
   const { toast } = useToast();
-  const originalProducts = useRef<Product[]>([]);
-
-  // Load products: prefer localStorage, fallback to XLSX
-  useEffect(() => {
-    const savedProducts = localStorage.getItem(STORAGE_KEY_PRODUCTS);
-    if (savedProducts) {
-      try {
-        const parsed = JSON.parse(savedProducts) as Product[];
-        if (parsed.length > 0) {
-          setProducts(parsed);
-          originalProducts.current = parsed.map((p) => ({ ...p }));
-          setLoading(false);
-          return;
-        }
-      } catch { /* fall through */ }
-    }
-    loadProductsFromXLSX()
-      .then((data) => {
-        setProducts(data);
-        originalProducts.current = data.map((p) => ({ ...p }));
-        localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(data));
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Failed to load products:", err);
-        toast({ title: "Erro ao carregar dados", description: String(err), variant: "destructive" });
-        setLoading(false);
-      });
-  }, []);
-
-  // Persist products to localStorage on change
-  useEffect(() => {
-    if (products.length > 0) {
-      localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(products));
-    }
-  }, [products]);
-
-  // Persist debitHistory to localStorage on change
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_DEBIT, JSON.stringify(debitHistory));
-  }, [debitHistory]);
 
   const filteredProducts = useMemo(() => {
     let list = products;
@@ -165,7 +114,6 @@ const Index = () => {
     }
     const targetCents = Math.round(parsed * 100);
 
-    // Close dialog first if open, wait for DOM to settle
     if (dialogOpen) {
       setDialogOpen(false);
       setSuggestions(null);
@@ -174,14 +122,12 @@ const Index = () => {
     setCalculating(true);
     const snapshot = [...products];
 
-    // Longer timeout to let dialog unmount cleanly before opening a new one
     setTimeout(() => {
       try {
         const result = findExactCombination(snapshot, targetCents);
         setCalculating(false);
         if (result) {
           setSuggestions(result);
-          // Extra tick to ensure old dialog is fully unmounted
           requestAnimationFrame(() => setDialogOpen(true));
         } else {
           setSuggestions(null);
@@ -203,46 +149,26 @@ const Index = () => {
     }, 100);
   }, [targetValue, products, toast, calculating, dialogOpen]);
 
-  // Fixed: use functional updater and lookup by id to always use fresh state
-  const handleConfirm = useCallback(() => {
+  const handleConfirm = useCallback(async () => {
     if (!suggestions || suggestions.length === 0) return;
 
-    // Build a debit map from suggestions: id -> { qty, code, description, unitPrice }
-    const debitMap = new Map<number, { qty: number; code: string; description: string; unitPriceCents: number }>();
-    for (const sg of suggestions) {
-      debitMap.set(sg.product.id, {
-        qty: sg.qty,
-        code: sg.product.code,
-        description: sg.product.description,
-        unitPriceCents: sg.product.unitPrice,
-      });
-    }
-
-    setProducts((prev) =>
-      prev.map((p) => {
-        const entry = debitMap.get(p.id);
-        if (!entry) return p;
-        const newStock = Math.max(0, p.stock - entry.qty);
-        return { ...p, stock: newStock };
-      })
-    );
-
-    // Add to debit history
-    const newEntries: DebitEntry[] = suggestions.map((sg) => ({
+    const debits = suggestions.map((sg) => ({
+      productId: sg.product.id,
+      qty: sg.qty,
       code: sg.product.code,
       description: sg.product.description,
-      qty: sg.qty,
       unitPriceCents: sg.product.unitPrice,
     }));
-    setDebitHistory((prev) => [...prev, ...newEntries]);
+
+    await debitProducts(debits);
 
     setDialogOpen(false);
     setSuggestions(null);
     setTargetValue("");
     toast({ title: "Estoque atualizado!", description: "As quantidades foram debitadas com sucesso." });
-  }, [suggestions, toast]);
+  }, [suggestions, toast, debitProducts]);
 
-  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.name.endsWith(".xlsx") && !file.name.endsWith(".xls")) {
@@ -250,45 +176,32 @@ const Index = () => {
       return;
     }
     setUploading(true);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const buffer = ev.target?.result as ArrayBuffer;
-        const newProducts = parseProductsFromBuffer(buffer);
-        if (newProducts.length === 0) {
-          toast({ title: "Nenhum produto encontrado", description: "Verifique se o arquivo segue o formato esperado.", variant: "destructive" });
-        } else {
-          setProducts(newProducts);
-          originalProducts.current = newProducts.map((p) => ({ ...p }));
-          localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(newProducts));
-          setPage(0);
-          setSearchTerm("");
-          setDebitHistory([]);
-          localStorage.setItem(STORAGE_KEY_DEBIT, JSON.stringify([]));
-          toast({ title: "Estoque atualizado!", description: `${newProducts.length} produtos carregados do novo arquivo.` });
-        }
-      } catch (err) {
-        toast({ title: "Erro ao processar arquivo", description: String(err), variant: "destructive" });
+    try {
+      const buffer = await file.arrayBuffer();
+      const result = await uploadFile(buffer);
+      if (result.count === 0) {
+        toast({ title: "Nenhum produto encontrado", description: "Verifique se o arquivo segue o formato esperado.", variant: "destructive" });
+      } else {
+        setPage(0);
+        setSearchTerm("");
+        toast({ title: "Estoque atualizado!", description: `${result.count} produtos carregados do novo arquivo.` });
       }
-      setUploading(false);
-    };
-    reader.onerror = () => {
-      toast({ title: "Erro ao ler arquivo", variant: "destructive" });
-      setUploading(false);
-    };
-    reader.readAsArrayBuffer(file);
+    } catch (err) {
+      toast({ title: "Erro ao processar arquivo", description: String(err), variant: "destructive" });
+    }
+    setUploading(false);
     e.target.value = "";
-  }, [toast]);
+  }, [toast, uploadFile]);
 
   const handleEditStock = useCallback((productId: number, newStock: number) => {
     if (isNaN(newStock) || newStock < 0) return;
-    setProducts((prev) => prev.map((p) => p.id === productId ? { ...p, stock: newStock } : p));
-  }, []);
+    updateProductStock(productId, newStock);
+  }, [updateProductStock]);
 
   const handleEditPrice = useCallback((productId: number, newPrice: number) => {
     if (isNaN(newPrice) || newPrice < 0) return;
-    setProducts((prev) => prev.map((p) => p.id === productId ? { ...p, unitPrice: Math.round(newPrice * 100) } : p));
-  }, []);
+    updateProductPrice(productId, Math.round(newPrice * 100));
+  }, [updateProductPrice]);
 
   const startEdit = (id: number, field: "stock" | "price", currentValue: number) => {
     setEditingCell({ id, field });
@@ -306,8 +219,8 @@ const Index = () => {
     setEditingCell(null);
   };
 
-  const handleResetDebitSum = () => {
-    setDebitHistory([]);
+  const handleResetDebitSum = async () => {
+    await resetDebitHistory();
     toast({ title: "Soma zerada!", description: "O total de débitos do dia foi reiniciado." });
   };
 
@@ -409,7 +322,6 @@ const Index = () => {
               </div>
             </CardContent>
           </Card>
-          {/* Debit Calculator Card */}
           <Card className={debitHistory.length > 0 ? "border-2 border-destructive/30" : ""}>
             <CardContent className="pt-6 flex items-center gap-4">
               <div className="p-3 rounded-xl bg-destructive/10">
@@ -424,7 +336,7 @@ const Index = () => {
           </Card>
         </div>
 
-        {/* Debit History detail (collapsible) */}
+        {/* Debit History */}
         {debitHistory.length > 0 && (
           <Card className="border border-destructive/20">
             <CardHeader className="pb-2">
