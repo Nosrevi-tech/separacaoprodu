@@ -14,7 +14,69 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      debit_history: {
+        Row: {
+          code: string
+          created_at: string
+          description: string
+          id: number
+          qty: number
+          unit_price_cents: number
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description: string
+          id?: number
+          qty: number
+          unit_price_cents: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string
+          id?: number
+          qty?: number
+          unit_price_cents?: number
+        }
+        Relationships: []
+      }
+      products: {
+        Row: {
+          barcode: string
+          code: string
+          created_at: string
+          description: string
+          id: number
+          stock: number
+          unit: string
+          unit_price: number
+          updated_at: string
+        }
+        Insert: {
+          barcode?: string
+          code: string
+          created_at?: string
+          description: string
+          id?: number
+          stock?: number
+          unit?: string
+          unit_price?: number
+          updated_at?: string
+        }
+        Update: {
+          barcode?: string
+          code?: string
+          created_at?: string
+          description?: string
+          id?: number
+          stock?: number
+          unit?: string
+          unit_price?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
