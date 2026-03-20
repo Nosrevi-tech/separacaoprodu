@@ -256,9 +256,11 @@ const Index = () => {
         } else {
           setProducts(newProducts);
           originalProducts.current = newProducts.map((p) => ({ ...p }));
+          localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(newProducts));
           setPage(0);
           setSearchTerm("");
           setDebitHistory([]);
+          localStorage.setItem(STORAGE_KEY_DEBIT, JSON.stringify([]));
           toast({ title: "Estoque atualizado!", description: `${newProducts.length} produtos carregados do novo arquivo.` });
         }
       } catch (err) {
