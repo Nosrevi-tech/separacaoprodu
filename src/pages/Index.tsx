@@ -114,23 +114,23 @@ const Index = () => {
     }
     const targetCents = Math.round(parsed * 100);
 
-    if (dialogOpen) {
-      setDialogOpen(false);
-      setSuggestions(null);
-    }
-
+    // Always close and clear first
+    setDialogOpen(false);
+    setSuggestions(null);
     setCalculating(true);
+
     const snapshot = [...products];
 
+    // Wait for Dialog to fully unmount before recalculating
     setTimeout(() => {
       try {
         const result = findExactCombination(snapshot, targetCents);
         setCalculating(false);
         if (result) {
           setSuggestions(result);
-          requestAnimationFrame(() => setDialogOpen(true));
+          // Delay opening to avoid removeChild conflict
+          setTimeout(() => setDialogOpen(true), 50);
         } else {
-          setSuggestions(null);
           toast({
             title: "Combinação não encontrada",
             description: "Não foi possível encontrar uma combinação exata para este valor.",
@@ -146,8 +146,8 @@ const Index = () => {
           variant: "destructive",
         });
       }
-    }, 100);
-  }, [targetValue, products, toast, calculating, dialogOpen]);
+    }, 200);
+  }, [targetValue, products, toast, calculating]);
 
   const handleConfirm = useCallback(async () => {
     if (!suggestions || suggestions.length === 0) return;
