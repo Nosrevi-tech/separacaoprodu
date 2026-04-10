@@ -42,7 +42,7 @@ function findExactCombination(products: Product[], targetCents: number): Suggest
     for (let i = idx; i < eligible.length && !found; i++) {
       const p = eligible[i];
       if (p.unitPrice > remaining) continue;
-      const maxQty = Math.min(p.stock, Math.floor(remaining / p.unitPrice));
+      const maxQty = Math.min(10, p.stock, Math.floor(remaining / p.unitPrice));
       for (let q = 1; q <= maxQty && !found; q++) {
         result.push({ product: p, qty: q });
         backtrack(i + 1, remaining - q * p.unitPrice);
