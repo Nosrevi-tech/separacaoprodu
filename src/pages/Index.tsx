@@ -31,7 +31,7 @@ function findExactCombination(products: Product[], targetCents: number): Suggest
 
   const result: Suggestion[] = [];
   let found = false;
-  const deadline = Date.now() + 5000;
+  const deadline = Date.now() + 10000;
 
   function backtrack(idx: number, remaining: number) {
     if (found) return;
@@ -43,7 +43,8 @@ function findExactCombination(products: Product[], targetCents: number): Suggest
       const p = eligible[i];
       if (p.unitPrice > remaining) continue;
       const maxQty = Math.min(10, p.stock, Math.floor(remaining / p.unitPrice));
-      for (let q = 1; q <= maxQty && !found; q++) {
+      // Try from max quantity down for greedy approach - finds solutions faster
+      for (let q = maxQty; q >= 1 && !found; q--) {
         result.push({ product: p, qty: q });
         backtrack(i + 1, remaining - q * p.unitPrice);
         if (!found) result.pop();
